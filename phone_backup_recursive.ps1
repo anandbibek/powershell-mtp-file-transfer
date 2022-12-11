@@ -1,13 +1,7 @@
-#this is an enhanced version of https://github.com/nosalan/powershell-mtp-file-transfer/blob/master/phone_backup.ps1
-#it supports backing up nested folders
+
 
 $ErrorActionPreference = [string]"Stop"
-$DestDirForPhotos = [string]"C:\BACKUP\TELEFON_DCIM_ALL"
-$DestDirForCallRecordings = [string]"C:\BACKUP\TELEFON_CALL_RECORDINGS_ALL"
-$DestDirForVoiceRecordings = [string]"C:\BACKUP\TELEFON_VOICE_RECORDINGS_ALL"
-$DestDirForWhatsApp = [string]"C:\BACKUP\TELEFON_WHATSAPP_ALL"
-$DestDirForViber = [string]"C:\BACKUP\TELEFON_VIBER_ALL"
-$Summary = [Hashtable]@{NewFilesCount=0; ExistingFilesCount=0}
+$Summary = [Hashtable]@{NewFilesCount=0; ExistingFilesCount=0; SkippedFilesCount=0; Total=0;}
 
 function Create-Dir($path)
 {
@@ -69,6 +63,8 @@ function Get-FullPathOfMtpDir($mtpDir)
 
 function Copy-FromPhoneSource-ToBackup($sourceMtpDir, $destDirPath)
 {
+
+ $destDirPath = (Join-Path $destDirPath $sourceMtpDir.GetFolder.Title)
  Create-Dir $destDirPath
  $destDirShell = (new-object -com Shell.Application).NameSpace($destDirPath)
  $fullSourceDirPath = Get-FullPathOfMtpDir $sourceMtpDir
@@ -76,7 +72,7 @@ function Copy-FromPhoneSource-ToBackup($sourceMtpDir, $destDirPath)
  
  Write-Host "Copying from: '" $fullSourceDirPath "' to '" $destDirPath "'"
  
- $copiedCount, $existingCount = 0
+ $copiedCount, $existingCount, $skippedCount = 0
  
  foreach ($item in $sourceMtpDir.GetFolder.Items())
   {
@@ -93,28 +89,31 @@ function Copy-FromPhoneSource-ToBackup($sourceMtpDir, $destDirPath)
       Write-Host "Element '$itemName' already exists"
       $existingCount++;
    }
-   else
+   elseif($item.Name -notlike '*.AAE' <# -and $item.Name -notlike '*.MOV' #>)
    {
      $copiedCount++;
      Write-Host ("Copying #{0}: {1}{2}" -f $copiedCount, $fullSourceDirPath, $item.Name)
      $destDirShell.CopyHere($item)
    }
+   else {
+    $skippedCount++
+    Write-Host ("Skipping {0}" -f $item.Name)
+   }
   }
   $script:Summary.NewFilesCount += $copiedCount 
   $script:Summary.ExistingFilesCount += $existingCount 
+  $script:Summary.SkippedFilesCount += $skippedCount 
+  $script:Summary.Total = $copiedCount + $existingCount  + $skippedCount
   Write-Host "Copied '$copiedCount' elements from '$fullSourceDirPath'"
 }
 
 
-
-$phoneName = "MyPhoneName" #Phone name as it appears in This PC
+$DestDir = [string]"E:\iPhone 11PM Backup" #this is where backups will be placed
+$phoneName = "Apple iPhone" #iPhone name as it appears in This PC
 $phoneRootDir = Get-PhoneMainDir $phoneName
 
-Copy-FromPhoneSource-ToBackup (Get-SubFolder $phoneRootDir "Phone\ACRCalls") $DestDirForCallRecordings
-Copy-FromPhoneSource-ToBackup (Get-SubFolder $phoneRootDir "Phone\VoiceRecorder") $DestDirForVoiceRecordings
-Copy-FromPhoneSource-ToBackup (Get-SubFolder $phoneRootDir "Phone\WhatsApp") $DestDirForWhatsApp
-Copy-FromPhoneSource-ToBackup (Get-SubFolder $phoneRootDir "Phone\DCIM\Camera") $DestDirForPhotos
-Copy-FromPhoneSource-ToBackup (Get-SubFolder $phoneRootDir "Phone\viber") $DestDirForViber
-Copy-FromPhoneSource-ToBackup (Get-SubFolder $phoneRootDir "Card\DCIM\Camera") $DestDirForPhotos
+#Set the folder name after opening the folder in explorer. Otherwise it won't recognise all the files.
+$folderName = "Internal Storage\DCIM\202208__" #have to do this manually for each folder.
 
+Copy-FromPhoneSource-ToBackup (Get-SubFolder $phoneRootDir $folderName) $DestDir
 write-host ($Summary | out-string)
